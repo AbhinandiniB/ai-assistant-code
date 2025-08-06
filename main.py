@@ -1,0 +1,52 @@
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import col, mean, lit, split
+
+def initialize_spark_session():
+    return SparkSession.builder \
+        .appName("HighThroughputSystem") \
+        .config("spark.jars.packages", "com.crealytics:spark-excel_2.12:0.15.1") \
+        .getOrCreate()
+
+def read_excel_file(spark, file_path):
+    return spark.read.format("com.crealytics.spark.excel") \
+        .option("header", "true") \
+        .option("inferSchema", "true") \
+        .load(file_path)
+
+def join_metadata_and_converter(metadata_df, converter_df):
+    return metadata_df.join(converter_df, metadata_df["Well"] == converter_df["Well Meta"], "left_outer")
+
+def process_plate_file(spark, file_path, metadata_converter_df):
+    plate_df = read_excel_file(spark, file_path)
+    plate_id = file_path.split('/')[-1].split('.')[0]
+    plate_df = plate_df.withColumn("Plate ID", lit(plate_id))
+    joined_df = metadata_converter_df.join(plate_df, 
+                                           (metadata_converter_df["Well Positions"] == plate_df["Well Positions"]) & 
+                                           (metadata_converter_df["Plate ID"] == plate_df["Plate ID"]), 
+                                           "inner")
+    return joined_df.select("Well Positions", "Raw data", "Location", "Plate ID", "Well Meta", "Compound ID", "Library")
+
+def normalize_raw_data(df):
+    mean_df = df.filter(col("Compound ID") == "Pos C") \
+               .groupBy("Plate ID") \
+               .agg(mean("Raw data").alias("mean_raw_data"))
+    normalized_df = df.join(mean_df, "Plate ID") \
+                     .withColumn("Raw data Norm", (col("Raw data") / col("mean_raw_data")) * 100) \
+                     .drop("mean_raw_data")
+    return normalized_df
+
+def main():
+    spark = initialize_spark_session()
+
+    metadata_df = read_excel_file(spark, "./data_store/HTS/Metadata.xlsx")
+    converter_df = read_excel_file(spark, "./data_store/HTS/Well converter.xlsx")
+    metadata_converter_df = join_metadata_and_converter(metadata_df, converter_df)
+
+    plate_df = process_plate_file(spark, "./data_store/HTS/Plate 1.xlsx", metadata_converter_df)
+
+    normalized_df = normalize_raw_data(plate_df)
+
+    normalized_df.show()
+
+if __name__ == "__main__":
+    main()
