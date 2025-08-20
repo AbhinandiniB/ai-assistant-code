@@ -1,28 +1,27 @@
-name: SonarCloud Scan
-
+name: SonarCloud
 on:
   push:
     branches:
       - main
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, ready_for_review]
 
 jobs:
-  sonarcloud:
-    name: SonarCloud
+  build:
+    name: Build and Analyze
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      - name: Set up JDK 17  # required even if your project isn't Java, Sonar needs a JDK
-        uses: actions/setup-java@v3
+      - name: Set up JDK 17 # or the version you need
+        uses: actions/setup-java@v4
         with:
           java-version: 17
           distribution: temurin
 
       - name: Cache SonarCloud packages
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ~/.sonar/cache
           key: ${{ runner.os }}-sonar
@@ -31,7 +30,9 @@ jobs:
       - name: SonarCloud Scan
         uses: SonarSource/sonarcloud-github-action@master
         with:
-          projectBaseDir: .
+          args: >
+            -Dsonar.projectKey=AbhinandiniB_ai-assistant-code
+            -Dsonar.organization=abhinandinib
         env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
